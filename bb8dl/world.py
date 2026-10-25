@@ -153,8 +153,7 @@ class World:
         self.ren = renderer
         self.n = len(sc["terrain"])
         self.rng = np.random.default_rng(seed)
-        self.gen = torch.Generator(device=renderer.device)
-        self.gen.manual_seed(int(seed))
+        self.gen = None
         self.s = Rb.RobotState.zeros(self.n)
         self.k = np.zeros(self.n, int)
         self.odom = np.zeros((self.n, 3))

@@ -23,9 +23,14 @@ PAIRS = list(itertools.combinations(range(4), 2))  # 6 pairs
 class STFTFeatures:
     """(n,4,N_WIN) audio -> (n,Cin,32,65) tensor.
 
-    Channels: 4 log-power maps, cos/sin of the phase of X_m X_0^* for m=1..3,
-    and a time-index ramp (absolute time = time of flight, needed for range).
-    `mode="mag"` drops the phase channels (ablation).
+    Channels: 4 log-power maps; real and imaginary parts of the pair cross-spectrum
+    G_ij(f,t) = X_i X_j^* for all 6 mic pairs, normalised per frequency by
+    sum_t |G_ij(f,t)| and zeroed outside the known chirp band (a time-frequency
+    analogue of GCC-PHAT: every in-band frequency gets equal total weight, frames keep
+    their relative energy); a time-index ramp (absolute time = time of flight, needed
+    for range) and a frequency-index ramp. `mode="mag"` drops the phase channels
+    (ablation). The chirp index (0 = 20-22.5 kHz, 1 = 17-19.5 kHz) is a system
+    setting known to the receiver, and the classical baseline uses the same band mask.
     """
 
     def __init__(self, device, mode: str = "full", stats: tuple[float, float] | None = None):
@@ -33,11 +38,15 @@ class STFTFeatures:
         self.mode = mode
         self.win = torch.hann_window(C.STFT_N, device=self.device)
         self.ramp = torch.linspace(-1, 1, C.N_FRAMES, device=self.device)
+        self.framp = torch.linspace(-1, 1, C.BIN_HI - C.BIN_LO, device=self.device)
         self.stats = stats or (0.0, 1.0)
+        f = torch.arange(C.BIN_LO, C.BIN_HI, device=self.device) * C.FS / C.STFT_N
+        self.band = torch.stack([((f >= C.CHIRPS[nm][0] - 200) & (f <= C.CHIRPS[nm][1] + 200)).float()
+                                 for nm in ["us", "fb"]])  # (2,F)
 
     @property
     def in_ch(self) -> int:
-        return 11 if self.mode == "full" else 5
+        return 18 if self.mode == "full" else 6
 
     def logpow(self, y: torch.Tensor) -> torch.Tensor:
         n = y.shape[0]
@@ -45,17 +54,21 @@ class STFTFeatures:
                        center=True, return_complex=True)[:, C.BIN_LO:C.BIN_HI]
         return X.reshape(n, 4, C.BIN_HI - C.BIN_LO, -1)
 
-    def __call__(self, y: torch.Tensor) -> torch.Tensor:
+    def __call__(self, y: torch.Tensor, chirp_idx) -> torch.Tensor:
         X = self.logpow(y)
         lp = torch.log(X.real**2 + X.imag**2 + 1e-10)
         lp = (lp - self.stats[0]) / self.stats[1]
         n, _, F, T = lp.shape
         parts = [lp]
         if self.mode == "full":
-            cross = X[:, 1:] * X[:, :1].conj()
-            cross = cross / (cross.abs() + 1e-9)
-            parts += [cross.real, cross.imag]
+            ci = torch.as_tensor(chirp_idx, device=self.device, dtype=torch.long)
+            i, j = zip(*PAIRS)
+            G = X[:, list(i)] * X[:, list(j)].conj()
+            Z = G / (G.abs().sum(3, keepdim=True) + 1e-12) * self.band[ci].view(n, 1, F, 1)
+            Z = Z * (T / 4.0)
+            parts += [Z.real, Z.imag]
         parts.append(self.ramp.view(1, 1, 1, T).expand(n, 1, F, T))
+        parts.append(self.framp.view(1, 1, F, 1).expand(n, 1, F, T))
         return torch.cat(parts, 1)
 
 

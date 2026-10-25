@@ -1,9 +1,11 @@
-# Python 3.13 on Windows. Install torch from the CUDA index first:
-#   pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-torch==2.10.0
-numpy==2.2.6
-scipy==1.16.3
-matplotlib==3.10.5
-gymnasium==1.2.2
-stable-baselines3==2.7.0
-flask==3.1.2
+# Python 3.13 on Windows. Versions are the ones actually used for the reported runs.
+# Install torch from the CUDA 12.8 index first:
+#   pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+numpy==2.5.4
+scipy==1.18.1
+matplotlib==3.11.2
+gymnasium==1.4.0
+stable-baselines3==2.9.0
+flask==3.1.3
+soundfile==0.14.0
