@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>BB-8 companion</title>
+<style>
+body{font:14px system-ui,sans-serif;background:#111;color:#ddd;margin:20px}
+button{font-size:18px;padding:10px 22px;margin-right:10px;border:0;border-radius:6px;cursor:pointer}
+#stop{background:#c62828;color:#fff}#arm{background:#2e7d32;color:#fff}#relock{background:#455a64;color:#fff}
+.row{display:flex;gap:30px;align-items:flex-start;margin-top:16px}
+pre{background:#1d1d1d;padding:12px;border-radius:6px;min-width:380px}
+</style></head><body>
+<h2>BB-8 companion</h2>
+<button id="stop" onclick="post('/estop')">E-STOP</button>
+<button id="arm" onclick="post('/arm')">ARM</button>
+<button id="relock" onclick="post('/relock')">Re-lock chirp grid</button>
+<div class="row"><canvas id="c" width="360" height="360"></canvas><pre id="s">connecting...</pre></div>
+<script>
+function post(p){fetch(p,{method:'POST'})}
+const c=document.getElementById('c'),g=c.getContext('2d');
+function draw(d){
+  g.clearRect(0,0,360,360);g.save();g.translate(180,180);
+  g.strokeStyle='#444';for(let r=1;r<=7;r+=2){g.beginPath();g.arc(0,0,r*24,0,7);g.stroke()}
+  g.fillStyle='#ccc';g.fillText('front',-12,-170);
+  const dot=(az,r,col)=>{if(az==null||r==null)return;const a=az*Math.PI/180;
+    g.fillStyle=col;g.beginPath();g.arc(-Math.sin(a)*r*24,-Math.cos(a)*r*24,7,0,7);g.fill()};
+  if(d.truth)dot(d.true_az_deg,d.truth.range,'#4caf50');
+  dot(d.est_az_deg,d.est_range_m,'#ff9800');
+  g.restore();
+  g.fillStyle='#ff9800';g.fillText('estimate',10,350);g.fillStyle='#4caf50';g.fillText('truth (sim)',80,350);
+}
+async function tick(){
+  try{const d=await (await fetch('/state')).json();draw(d);
+    document.getElementById('s').textContent=JSON.stringify(d,(k,v)=>typeof v==='number'?Math.round(v*1000)/1000:v,1);
+    document.body.style.borderTop=d.estop?'6px solid #c62828':'6px solid #2e7d32';
+  }catch(e){document.getElementById('s').textContent='app not reachable'}
+  setTimeout(tick,200)}
+tick();
+</script></body></html>
