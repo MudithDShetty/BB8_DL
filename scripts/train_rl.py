@@ -25,11 +25,15 @@ from bb8dl.rl_env import BB8VecEnv  # noqa: E402
 
 
 class CurveLogger(BaseCallback):
-    def __init__(self, out_path: Path, every: int = 1):
+    """Learning curve to JSON after every rollout; model checkpoint every `ckpt_every` steps."""
+
+    def __init__(self, out_path: Path, ckpt_path: Path, ckpt_every: int = 250_000, rows=None, wall0: float = 0.0):
         super().__init__()
-        self.out_path = out_path
-        self.rows, self.buf_r, self.buf_l, self.buf_fail = [], [], [], []
-        self.t0 = time.time()
+        self.out_path, self.ckpt_path, self.ckpt_every = out_path, ckpt_path, ckpt_every
+        self.rows = rows or []
+        self.buf_r, self.buf_l, self.buf_fail = [], [], []
+        self.t0 = time.time() - wall0
+        self.next_ckpt = None
 
     def _on_step(self) -> bool:
         for info, done in zip(self.locals["infos"], self.locals["dones"]):
@@ -40,6 +44,12 @@ class CurveLogger(BaseCallback):
         return True
 
     def _on_rollout_end(self) -> None:
+        if self.next_ckpt is None:
+            self.next_ckpt = (self.num_timesteps // self.ckpt_every + 1) * self.ckpt_every
+        if self.num_timesteps >= self.next_ckpt:
+            self.model.save(self.ckpt_path)
+            self.next_ckpt += self.ckpt_every
+            print(f"checkpoint at {self.num_timesteps} steps", flush=True)
         if not self.buf_r:
             return
         row = dict(timesteps=int(self.num_timesteps), ep_return_mean=float(np.mean(self.buf_r)),
@@ -61,24 +71,37 @@ def main():
     ap.add_argument("--steps", type=int, default=3_000_000)
     ap.add_argument("--n-envs", type=int, default=32)
     ap.add_argument("--channel", default="A_us")
+    ap.add_argument("--resume", action="store_true", help="continue from the periodic checkpoint and curve")
     args = ap.parse_args()
     torch.manual_seed(C.SEEDS["rl"])
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     dev_name = torch.cuda.get_device_name(0) if dev == "cuda" else "cpu"
     print(f"env device (acoustic render + features): {dev_name}; policy device: cpu", flush=True)
     env = BB8VecEnv(args.n_envs, C.SEEDS["rl"], channel=args.channel, device=dev)
-    model = PPO("MlpPolicy", env, n_steps=256, batch_size=1024, n_epochs=8, learning_rate=3e-4, gamma=0.99,
-                gae_lambda=0.95, clip_range=0.2, ent_coef=0.0, vf_coef=0.5, max_grad_norm=0.5,
-                policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.7),
-                seed=C.SEEDS["rl"], device="cpu", verbose=0)
     curve = C.RESULTS / "train_rl_curve.json"
-    cb = CurveLogger(curve)
+    ckpt = C.DATA_ROOT / "runs" / "rl_ppo_periodic.zip"
+    ckpt.parent.mkdir(parents=True, exist_ok=True)
+    rows, wall0, resumes = None, 0.0, 0
+    if args.resume:
+        model = PPO.load(ckpt, env=env, device="cpu")
+        rows = [r for r in json.loads(curve.read_text()) if r["timesteps"] <= model.num_timesteps]
+        wall0 = rows[-1]["wall_s"] if rows else 0.0
+        resumes = 1
+        print(f"resumed at {model.num_timesteps} steps", flush=True)
+    else:
+        model = PPO("MlpPolicy", env, n_steps=256, batch_size=1024, n_epochs=8, learning_rate=3e-4, gamma=0.99,
+                    gae_lambda=0.95, clip_range=0.2, ent_coef=0.0, vf_coef=0.5, max_grad_norm=0.5,
+                    policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.7),
+                    seed=C.SEEDS["rl"], device="cpu", verbose=0)
+    cb = CurveLogger(curve, ckpt, rows=rows, wall0=wall0)
     t0 = time.time()
-    model.learn(total_timesteps=args.steps, callback=cb)
+    model.learn(total_timesteps=args.steps - model.num_timesteps if args.resume else args.steps,
+                callback=cb, reset_num_timesteps=not args.resume)
     C.CHECKPOINTS.mkdir(exist_ok=True)
     model.save(C.CHECKPOINTS / "rl_ppo.zip")
     meta = dict(algo="PPO (stable-baselines3)", total_timesteps=int(model.num_timesteps), requested=args.steps,
-                n_envs=args.n_envs, episode_s=30.0, channel=args.channel, seconds=time.time() - t0,
+                n_envs=args.n_envs, episode_s=30.0, channel=args.channel, seconds=time.time() - t0 + wall0,
+                resumed_from_checkpoint=bool(resumes),
                 env_device=dev_name, policy_device="cpu", seed=C.SEEDS["rl"],
                 hyper=dict(n_steps=256, batch_size=1024, n_epochs=8, lr=3e-4, gamma=0.99, gae_lambda=0.95,
                            clip=0.2, net=[256, 256], log_std_init=-0.7))

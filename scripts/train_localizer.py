@@ -6,6 +6,8 @@
 
 The whole float16 dataset (about 1 GB) is kept resident on the GPU and STFT
 features are computed per batch on the GPU, so there is no loader bottleneck.
+Each training batch gets a random exact symmetry of the square array
+(bb8dl/augment.py), unless --no-aug.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bb8dl import config as C  # noqa: E402
+from bb8dl.augment import d4_apply  # noqa: E402
 from bb8dl.features import STFTFeatures  # noqa: E402
 from bb8dl.model import Localizer, loss_fn, n_params  # noqa: E402
 
@@ -70,6 +73,7 @@ def main() -> None:
     ap.add_argument("--bs", type=int, default=256)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--limit", type=int, default=0, help="debug: use only this many train examples")
+    ap.add_argument("--no-aug", action="store_true", help="disable the D4 square-array symmetry augmentation")
     args = ap.parse_args()
 
     torch.manual_seed(C.SEEDS["torch"])
@@ -111,9 +115,12 @@ def main() -> None:
         tl, n_b, t0 = 0.0, 0, time.time()
         for b in range(steps_per_epoch):
             idx = perm[b * args.bs:(b + 1) * args.bs]
+            xa, za = tr_a[idx].float(), az_t[idx]
+            if not args.no_aug:
+                xa, za = d4_apply(xa, za, torch.randint(0, 8, (len(idx),), device=dev))
             with torch.autocast(dev.type, dtype=torch.float16, enabled=dev.type == "cuda"):
-                out = model(feat(tr_a[idx].float(), ci_t[idx]))
-            loss, _ = loss_fn(out, az_t[idx], rg_t[idx])
+                out = model(feat(xa, ci_t[idx]))
+            loss, _ = loss_fn(out, za, rg_t[idx])
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
@@ -154,7 +161,7 @@ def main() -> None:
     small = dict(ck, state={k: (v.half() if v.is_floating_point() else v) for k, v in best_state.items()})
     torch.save(small, C.CHECKPOINTS / f"localizer_{args.tag}.pt")
     np.savez(C.DATA_ROOT / "runs" / args.tag / "test_pred.npz", **pt)
-    out = dict(tag=args.tag, mode=args.mode, train_split=args.train_split, device=dev_name,
+    out = dict(tag=args.tag, mode=args.mode, train_split=args.train_split, d4_augmentation=not args.no_aug, device=dev_name,
                torch=torch.__version__, params=n_params(model), epochs=args.epochs, batch=args.bs,
                lr=args.lr, n_train=int(tr_a.shape[0]), n_val=int(va_a.shape[0]), n_test=int(te_a.shape[0]),
                train_seconds=time.time() - t_start, test=test, history=hist, seed=C.SEEDS["torch"])

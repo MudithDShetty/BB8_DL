@@ -150,3 +150,26 @@ class PIDFollower(TrackPursuit):
         u = np.clip(ff + np.stack([fb_fwd - fb_turn, fb_fwd + fb_turn], 1), -1, 1)
         self.u_prev = u
         return u
+
+
+def build_controller(name: str, device, localizer_ckpt=None):
+    """Factory shared by the evaluation harness and the companion app."""
+    from .residual import Residual
+    res = lambda: Residual(C.CHECKPOINTS / "residual.pt")  # noqa: E731
+    dl = lambda: DLLoc(localizer_ckpt or C.CHECKPOINTS / "localizer_full.pt", device)  # noqa: E731
+    if name == "oracle":
+        return TrackPursuit(OracleLoc(), "oracle")
+    if name == "gcc_track":
+        return TrackPursuit(GCCLoc(device))
+    if name == "gcc_pid_res":
+        return PIDFollower(GCCLoc(device), res())
+    if name == "dl_track":
+        return TrackPursuit(dl())
+    if name == "dl_pid":
+        return PIDFollower(dl())
+    if name == "dl_pid_res":
+        return PIDFollower(dl(), res())
+    if name == "rl":
+        from .rl_env import RLFollower
+        return RLFollower(C.CHECKPOINTS / "rl_ppo.zip", device)
+    raise KeyError(name)

@@ -34,8 +34,15 @@ white noise) -> audio `(n, 4, 2048)` float32 at 48 kHz.
 
 Consumers:
 
-* `features.STFTFeatures` -> network input `(n, 11, 32, 65)`: 4 log-power maps, cos/sin of the
-  phase of X_m X_0* (m = 1..3), time ramp.
+* `features.STFTFeatures` -> network input `(n, 18, 32, 65)` (256-point STFT, hop 32, bins
+  16.9-22.9 kHz): 4 log-power maps; real and imaginary parts of the cross-spectrum
+  X_i X_j* for all 6 pairs, normalised per frequency by its sum over frames and zeroed outside
+  the known chirp band; time ramp; frequency ramp.
+* `model.Localizer` (2.07 M params): a steering layer initialised to SRP-PHAT steering vectors
+  for 72 azimuths x 7 elevations turns the 12 phase channels into beam-time maps; a
+  circular-padded CNN processes them; a spectral CNN processes log-power; a 2-layer BiGRU
+  over the 65 frames feeds two attention poolings (azimuth from the pooled beam maps, range
+  from the GRU states).
 * `features.Classical` -> SRP-PHAT azimuth, pairwise GCC-PHAT + least-squares azimuth,
   matched-filter time-of-flight range, and a 17-d feature vector for RL.
 
@@ -48,7 +55,7 @@ receives. Physics at 200 Hz, control at 20 Hz (one chirp per decision).
 
 ## Terrains
 
-`flat`, `slope` (7-13 deg plane), `rough` (random height field + bumps), `grass` (high rolling
+`flat`, `slope` (5-10 deg plane), `rough` (random height field + bumps), `grass` (high rolling
 resistance and drag, absorptive ground, 0.5-1.5 dB/m excess attenuation), `indoor` (6-10 m room,
 walls block motion, image-source reverberation), `obstacles` (8 posts that block motion,
 scatter sound and attenuate the direct path when they occlude it).
@@ -71,16 +78,33 @@ The residual is a supervised inverse-dynamics model: given the last 0.5 s of pro
 commands plus the PID's desired (v, omega), it predicts the wheel duty that achieves them;
 the residual is that prediction minus the nominal flat-ground mixer.
 
+## Localizer design history
+
+Two designs that fed per-bin phase (unit phasors) to a shared-weight 2-D CNN never learned
+bearing (validation error stayed near the 90 degree chance level; histories in
+`results/aborted_localizer_v*_history.json`). With a 5 cm array at 17-23 kHz the inter-mic
+spacing exceeds half a wavelength, so phase is spatially aliased and the phase-to-direction
+map differs per frequency bin; a convolution shared across frequency cannot represent it.
+`scripts/debug_steer.py` then showed that a fixed steered response over the STFT reaches the
+classical baseline's accuracy only if frequencies are equally weighted *and* out-of-band bins
+are masked, which motivated the current features and the physics-initialised steering layer.
+A first run of the current design without augmentation overfit (train 8.4 deg vs validation
+17.1 deg MAE at epoch 8 of 30, stopped; `results/stopped_localizer_v3_noaug_history.json`);
+training now applies the 8 exact symmetries of the square array (`bb8dl/augment.py`).
+
 ## Repo layout
 
 ```
-bb8dl/        library (config, acoustics, features, robot, world, model, tracker, controllers, rl_env)
-scripts/      entry points (gen_dataset, train_localizer, eval_localization, train_residual,
-              train_rl, eval_closed_loop, make_figures, export_model)
+bb8dl/        library (config, acoustics, features, augment, robot, world, model, tracker,
+              controllers, residual, rl_env, evaluate, protocol)
+scripts/      entry points (gen_dataset, sanity_checks, train_localizer, eval_localization,
+              train_residual, train_rl, eval_closed_loop, make_figures, export_sample, debug_*)
 browser/      Flask data + results browser
-app/          companion app (loads exported checkpoint, sends UDP wheel commands)
-firmware/     ESP32 Arduino receiver
-tools/        chirp WAV generator, mock ESP32
+app/          companion app (loads the localizer checkpoint, sim replay or live UDP audio,
+              sends UDP wheel commands)
+firmware/     ESP32 sketches: drive receiver, 4 x INMP441 capture
+tools/        chirp WAV generator, mock drive ESP32, fake mic-ESP32 stream
+assets/       chirp WAVs
 results/      metric JSON + figures (committed)
 paper/        LaTeX paper
 ```
