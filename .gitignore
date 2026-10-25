@@ -1,0 +1,41 @@
+# environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.key
+*.pem
+
+# large generated data (default location is outside the repo, see BB8DL_DATA)
+data/*
+!data/sample/
+runs/
+logs/
+*.npy.tmp
+results/raw/
+
+# heavy checkpoints; only small exported inference weights are committed
+checkpoints/*.ckpt
+checkpoints/*_full.pt
+checkpoints/rl/*.pkl
+
+# LaTeX build junk
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.toc
+paper/*.synctex.gz
+paper/*.fls
+paper/*.fdb_latexmk
+
+# firmware build
+firmware/**/build/
+.pio/
+
+# OS
+Thumbs.db
+.DS_Store
