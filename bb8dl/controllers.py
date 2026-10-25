@@ -144,7 +144,9 @@ class PIDFollower(TrackPursuit):
         self.hist[:, -1] = np.concatenate([self.u_prev, pr], 1)
         ff = mix(v, w)
         if self.res is not None:
-            ff = ff + self.res.residual(self.hist, v, w)
+            # queried at the measured motion, not the setpoint: the terrain load the flat-ground
+            # mixer misses. Querying at the setpoint makes it a second, high-gain speed loop.
+            ff = ff + self.res.residual(self.hist, pr[:, 0], pr[:, 1])
         fb_fwd = g["kp_v"] * ev + g["ki_v"] * self.iv
         fb_turn = g["kp_w"] * ew + g["ki_w"] * self.iw
         u = np.clip(ff + np.stack([fb_fwd - fb_turn, fb_fwd + fb_turn], 1), -1, 1)

@@ -7,11 +7,14 @@ What it learns, exactly: a supervised inverse-dynamics map
 h_t holds the last 10 control steps (0.5 s) of applied wheel duty and noisy
 proprioception (speed, yaw rate, pitch, pitch rate, roll). (v_target, w_target)
 are the speed and yaw rate measured K=4 steps (0.2 s) after u_t starts being
-held. Training data are random piecewise-constant commands on all six terrains.
-At run time the PID's setpoints are fed as targets and the residual is
-f(h, v*, w*) - mix(v*, w*), i.e. how much the flat-ground mixer must be corrected
-on the terrain the recent history implies (more duty uphill or on grass, less
-downhill). It does not see the terrain label or any acoustic input.
+held. Training data are random piecewise-constant commands on all six terrains,
+sampled only at command switches (otherwise u_t equals the previous duty in h_t and
+the net learns to copy it).
+At run time the net is queried at the measured motion, and the residual is
+f(h, v, w) - mix(v, w): the duty needed to hold the current motion on the terrain
+the recent history implies, minus what the flat-ground mixer would use (more duty
+uphill or on grass, less downhill). It is added to the PID's feedforward
+mix(v*, w*). It does not see the terrain label or any acoustic input.
 """
 
 from __future__ import annotations

@@ -59,6 +59,9 @@ def collect(n_per_terrain: int, T: int, seed: int):
     X, Y, TT = [], [], []
     for t in range(HIST, T - K_AHEAD):
         same = np.all(U[:, t:t + K_AHEAD + 1] == U[:, t:t + 1], axis=(1, 2))  # u held for K steps
+        # only at command switches: mid-hold samples have u_t == u_{t-1}, which is in the history,
+        # and the net learns to copy it (positive feedback in closed loop)
+        same &= np.any(U[:, t] != U[:, t - 1], axis=1)
         if not same.any():
             continue
         hist = np.concatenate([np.concatenate([np.zeros((n, 1, 2)), U[:, :-1]], 1)[:, t - HIST + 1:t + 1],
@@ -73,8 +76,8 @@ def collect(n_per_terrain: int, T: int, seed: int):
 def main():
     torch.manual_seed(C.SEEDS["torch"])
     t0 = time.time()
-    Xtr, Ytr, Ttr = collect(48, 1200, C.SEEDS["residual_data"])
-    Xva, Yva, Tva = collect(12, 1200, C.SEEDS["residual_data"] + 50)
+    Xtr, Ytr, Ttr = collect(160, 1200, C.SEEDS["residual_data"])
+    Xva, Yva, Tva = collect(40, 1200, C.SEEDS["residual_data"] + 50)
     print(f"samples train {len(Xtr)} val {len(Xva)}  collect {time.time() - t0:.0f}s", flush=True)
     net = ResidualNet()
     opt = torch.optim.AdamW(net.parameters(), lr=2e-3, weight_decay=1e-4)

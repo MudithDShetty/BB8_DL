@@ -18,7 +18,7 @@ results/raw/
 
 # heavy checkpoints; only small exported inference weights are committed
 checkpoints/*.ckpt
-checkpoints/*_full.pt
+checkpoints/*_state.pt
 checkpoints/rl/*.pkl
 
 # LaTeX build junk

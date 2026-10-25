@@ -80,16 +80,16 @@ the residual is that prediction minus the nominal flat-ground mixer.
 
 ## Localizer design history
 
-Two designs that fed per-bin phase (unit phasors) to a shared-weight 2-D CNN never learned
-bearing (validation error stayed near the 90 degree chance level; histories in
-`results/aborted_localizer_v*_history.json`). With a 5 cm array at 17-23 kHz the inter-mic
+Two designs that fed per-bin phase (unit phasors) to a shared-weight 2-D CNN barely learned
+bearing (validation MAE plateaued near 75 degrees, median near 68, against 90 for chance;
+stopped after 7 and 11 epochs; histories in `results/aborted_localizer_v*_history.json`). With a 5 cm array at 17-23 kHz the inter-mic
 spacing exceeds half a wavelength, so phase is spatially aliased and the phase-to-direction
 map differs per frequency bin; a convolution shared across frequency cannot represent it.
 `scripts/debug_steer.py` then showed that a fixed steered response over the STFT reaches the
 classical baseline's accuracy only if frequencies are equally weighted *and* out-of-band bins
 are masked, which motivated the current features and the physics-initialised steering layer.
-A first run of the current design without augmentation overfit (train 8.4 deg vs validation
-17.1 deg MAE at epoch 8 of 30, stopped; `results/stopped_localizer_v3_noaug_history.json`);
+A first run of the current design without augmentation overfit (train 7.4 deg vs validation
+16.9 deg MAE after epoch 9 of 30, stopped; `results/stopped_localizer_v3_noaug_history.json`);
 training now applies the 8 exact symmetries of the square array (`bb8dl/augment.py`).
 
 ## Repo layout

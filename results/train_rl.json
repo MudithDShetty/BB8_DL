@@ -1,0 +1,27 @@
+{
+ "algo": "PPO (stable-baselines3)",
+ "total_timesteps": 4005888,
+ "requested": 4000000,
+ "n_envs": 32,
+ "episode_s": 30.0,
+ "channel": "A_us",
+ "seconds": 5401.513147592545,
+ "resumed_from_checkpoint": false,
+ "env_device": "NVIDIA GeForce RTX 4060 Laptop GPU",
+ "policy_device": "cpu",
+ "seed": 6000,
+ "hyper": {
+  "n_steps": 256,
+  "batch_size": 1024,
+  "n_epochs": 8,
+  "lr": 0.0003,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "clip": 0.2,
+  "net": [
+   256,
+   256
+  ],
+  "log_std_init": -0.7
+ }
+}
