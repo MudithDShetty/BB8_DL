@@ -1,0 +1,13 @@
+\begin{tabular}{lrrrrrrrr}
+\toprule
+method & \% time within & final dist. & time to reach & path & person path & collision & tumbles & \% time\\
+ & radius & (m) & radius (s) & (m) & (m) & steps & /episode & $<0.4$ m\\
+\midrule
+Oracle + pursuit & 90 & 1.05 & 3.9 & 29.4 & 27.3 & 2.0 & 0.00 & 1.5 \\
+GCC-PHAT + tracker & 80 & 2.87 & 4.7 & 32.7 & 27.3 & 2.3 & 0.04 & 1.7 \\
+DL + tracker & 85 & 1.55 & 4.2 & 30.8 & 27.3 & 3.0 & 0.17 & 1.6 \\
+DL + PID & 86 & 2.74 & 4.1 & 35.6 & 27.3 & 2.1 & 2.51 & 1.3 \\
+DL + PID + residual & 84 & 2.58 & 4.2 & 35.0 & 27.3 & 1.9 & 0.03 & 1.3 \\
+RL (PPO) & 93 & 1.90 & 3.8 & 28.1 & 27.3 & 2.7 & 0.00 & 0.7 \\
+\bottomrule
+\end{tabular}

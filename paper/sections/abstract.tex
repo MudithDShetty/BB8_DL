@@ -1,0 +1,20 @@
+We study, entirely in simulation, whether a BB-8 style spherical robot can follow a person by
+listening to chirps from their phone, using a four-microphone INMP441-class array with a 5\,cm
+radius. In the 17--23\,kHz band such an array is spatially aliased and multipath is strong. We
+built a GPU acoustic renderer with image-source multipath and two front-end models, together
+with a pendulum-cart sphere model on six terrains. On top of these we compare a deep
+multichannel localizer (\TrainFullParams{} parameters, first layer initialised to the SRP-PHAT
+steering of the array) with GCC-PHAT and SRP-PHAT, and three controller families: the deep
+localizer with a Kalman tracker and pursuit, a cascaded PID with a learned terrain residual,
+and a PPO policy. On \NTestSet{} test recordings the deep localizer reaches a bearing MAE of
+\LocdlfullBMAE$^\circ$ (median \LocdlfullBMed$^\circ$) against \LocsrpphatBMAE$^\circ$
+(\LocsrpphatBMed$^\circ$) for SRP-PHAT, and a range MAE of \LocdlfullRMAE\,m against
+\LocsrpphatRMAE\,m. Without phase it is at chance (\LocdlmagBMAE$^\circ$); without multipath in
+training it reaches \LocdlanechoicBMAE$^\circ$. In \CLAusN{} closed-loop episodes per terrain
+on the ideal channel, pooled follow success is \CLAusoraclesucc\% for an oracle localizer,
+\CLAusgcctracksucc\% with GCC-PHAT, \CLAusdltracksucc\% with the deep localizer,
+\CLAusdlpidsucc\% for DL + PID (which tumbles), \CLAusdlpidressucc\% with the residual, and
+\CLAusrlsucc\% for PPO, the only controller that handles slopes. With a realistic front end and
+a 17--19.5\,kHz chirp, the corresponding rates are \CLBfbgcctracksucc\%, \CLBfbdltracksucc\%
+and \CLBfbrlsucc\% for GCC-PHAT, DL + tracker and PPO. We release the simulator, models,
+ESP32 firmware and a companion app. No hardware experiment was run.

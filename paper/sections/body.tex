@@ -1,0 +1,235 @@
+\section{Introduction}
+
+A spherical robot in the style of the BB-8 toy hides its drive inside the shell: a two-wheel
+cart rolls on the inner surface like a hamster in a ball \cite{chase2012spherical,halme1996spherical}.
+We ask whether such a robot can follow a walking person who carries nothing but a phone, using
+sound. The phone repeats a 10\,ms linear chirp every 50\,ms near or above the edge of human
+hearing, and a four-microphone array (INMP441-class MEMS microphones, 5\,cm radius) on the
+robot's levelled mast estimates the bearing and range of the phone. The robot then has to
+drive toward the person across flat ground, slopes, rough ground, grass, a reverberant room
+and an obstacle field.
+
+The task combines two hard parts. Acoustically, the band that keeps the beacon inaudible
+(17--23\,kHz) has wavelengths of 15--20\,mm, so a 5\,cm array is spatially aliased: each
+microphone-pair phase difference maps to several candidate directions, and ground reflections,
+walls and obstacles add coherent copies of the chirp. Mechanically, a pendulum-cart sphere
+is underactuated, lags its commands, drifts downhill on slopes and loses speed on grass.
+
+We built a simulator for both parts and compared, on identical scenarios, (i) a deep
+multichannel localizer feeding a Kalman tracker and a pursuit law, (ii) a reinforcement-learning
+policy (PPO), and (iii) a cascaded PID controller driven by the deep localizer with a learned
+terrain residual, against a classical GCC-PHAT/SRP-PHAT localizer \cite{knapp1976gcc,dibiase2001srp}
+and an oracle with true bearing and range. Everything reported here is simulation;
+we built the ESP32 firmware and a companion app, but no hardware experiment was run.
+
+\textbf{Contributions.} (1) A GPU acoustic renderer with exact fractional delays, image-source
+multipath, obstacle scattering and occlusion, and two front-end models: an idealised transducer
+and a realistic phone-speaker plus INMP441 chain. (2) A localizer that starts from a
+physics-initialised steering layer over band-masked STFT cross-spectra and learns which frames
+to trust, with a documented account of two designs that failed. (3) A closed-loop comparison of
+six controllers on six terrains with per-episode metrics and confidence intervals. (4) Firmware
+and a companion app that implement the same packet protocol, tested against software stand-ins.
+
+\section{Related work}
+
+\textbf{Time-delay and steered-response localization.} Knapp and Carter's generalized
+cross-correlation with the phase transform (GCC-PHAT) \cite{knapp1976gcc} whitens the
+cross-spectrum so that every frequency contributes equally to the delay estimate; steered
+response power with PHAT (SRP-PHAT) sums these over microphone pairs on a grid of candidate
+directions and is a standard robust baseline in reverberant rooms \cite{dibiase2001srp}. Our
+classical baseline is exactly this: SRP-PHAT over 360 azimuths and 13 elevations, pairwise
+GCC-PHAT with a least-squares direction fit, and matched-filter time-of-flight ranging.
+
+\textbf{Acoustic localization with phones.} Daredevil \cite{constandache2014daredevil} localizes
+phones indoors using sound and microphone arrays; MilliSonic \cite{wang2019millisonic} tracks a
+device with near-ultrasonic FMCW signals and reports sub-millimetre one-dimensional accuracy by
+exploiting carrier phase. Both systems were evaluated on real hardware. Our setting differs (a
+moving, tilting, self-propelled receiver on varied terrain, a single small array, and pulsed
+chirps) and our results are simulated; we do not claim parity with either system, and nothing
+here approaches MilliSonic's accuracy.
+
+\textbf{Learned sound source localization.} Convolutional-recurrent networks on multichannel
+spectrograms with phase or inter-channel features are now common for direction of arrival
+estimation \cite{adavanne2019seld,chakrabarty2019doa}; see \cite{grumiaux2022survey} for a survey.
+Our localizer belongs to this family. It differs in that its first layer is initialised to the
+SRP-PHAT beamformer of the actual array geometry, which we found necessary at this aperture and
+frequency.
+
+\textbf{Spherical robots and learned control.} Pendulum-driven spheres and their dynamics are
+reviewed in \cite{chase2012spherical}; early motion control work includes
+\cite{halme1996spherical}. Combining a model-based controller with a learned correction has been
+studied as residual reinforcement learning \cite{johannink2019residual}; our residual is
+simpler, a supervised inverse-dynamics correction to the PID's feedforward. The policy is trained
+with PPO \cite{schulman2017ppo} in Stable-Baselines3 \cite{raffin2021sb3}.
+
+\section{Method}
+
+\subsection{Acoustic simulation}
+
+Each 50\,ms control step renders one chirp at 48\,kHz into a 2048-sample (42.7\,ms) window per
+microphone, starting at the assumed emission time. Propagation paths are: the direct path
+(attenuated by 8--20\,dB per obstacle that occludes it), a ground image (reflection coefficient
+by terrain, from 0.6--0.9 on flat ground to 0.05--0.3 on grass), an optional outdoor facade
+image, scattering from up to 8 cylindrical obstacles, and indoors the shoebox image sources up
+to second order \cite{allen1979image} plus a 24-path diffuse tail. Each path has a per-microphone
+length; the delay uses a temperature-dependent speed of sound (5--35\,$^\circ$C) and is applied
+exactly as a linear phase in a 4096-point FFT over 16--23.8\,kHz, so sub-sample delays are not
+quantised. Spherical spreading, air absorption (0.55\,dB/m) and terrain excess attenuation
+(0.5--1.5\,dB/m on grass) set amplitudes. The receiving array may be tilted: the head follows a
+quarter of the cart's lean (an assumed passively levelled mast).
+
+Two front-end channels are simulated. \emph{Channel A} (\texttt{A\_us}) is an ideal transducer
+and flat microphone with the 20--22.5\,kHz chirp. \emph{Channel B} applies a phone-speaker
+roll-off (fourth order, corner 18.5--21\,kHz), a second-order MEMS roll-off at 19\,kHz and a
+model of the INMP441 decimation filter (pass band to $0.423f_s$, stop band from $0.5f_s$; the
+exact edges are to be confirmed against the data sheet \cite{inmp441}), plus per-microphone gain
+($\pm$1\,dB) and delay ($\pm$2\,$\mu$s) mismatch. Channel B is used with the 20--22.5\,kHz chirp
+(\texttt{B\_us}; mean in-band gain \FeBus\,dB at a 20\,kHz speaker corner) and with a 17--19.5\,kHz fallback chirp
+(\texttt{B\_fb}; \FeBfb\,dB), which is what real hardware would likely need. White noise is added at the
+digital output with a direct-path SNR at 1\,m drawn from 10--45\,dB, and a random overall gain
+of $\pm$6\,dB.
+
+\textbf{Range needs synchronisation.} Time of flight is observable only because we assume the
+phone emits on a schedule the robot knows. We model the residual error of such a sync as
+100\,$\mu$s per-chirp jitter plus a per-episode bias of up to $\pm$200\,$\mu$s (up to 7\,cm).
+Without it, only bearing and a weak level cue would remain.
+
+\subsection{Robot and terrain}
+
+The sphere ($R=0.2$\,m, shell 1.0\,kg) contains a pendulum cart (1.5\,kg, centre of mass 0.1\,m
+below the centre) with two wheels driven by DC motors modelled by a linear torque--speed curve
+from a duty cycle $u\in[-1,1]$. Pitch dynamics follow a planar Lagrangian sphere--pendulum model
+with rolling without slip; a passive lateral pendulum gives roll and downhill drift on slopes;
+yaw follows first-order dynamics from differential torque. Rolling resistance, drag and yaw
+damping are terrain dependent and randomised by $\pm$15\%. Physics runs at 200\,Hz and control
+at 20\,Hz (one chirp per decision). Steady speed at full duty is \VFlatFull\,m/s on flat ground, \VUphillEightFull\,m/s up an
+8$^\circ$ slope and \VGrassFull\,m/s on grass (\texttt{results/sanity.json}). The terrains are \emph{flat}, \emph{slope} (5--10$^\circ$),
+\emph{rough} (random height field), \emph{grass} (high resistance, absorptive ground),
+\emph{indoor} (rooms of 4--10\,m in the dataset and 6--10\,m in closed loop, with reverberation;
+walls block motion) and \emph{obstacles}
+(posts that block motion, scatter sound and occlude the direct path). The person follows a
+scripted walk. For each terrain the same seeded scenarios are replayed for
+every controller.
+
+\subsection{Deep localizer}
+
+\textbf{Input.} A 256-point STFT (hop 32) of each channel, restricted to the 32 bins from 16.9 to
+22.9\,kHz and 65 frames. The 18 input channels are 4 normalised log-power maps; the real and
+imaginary parts of the cross-spectrum $G_{ij}(f,t)=X_i X_j^*$ for all six microphone pairs,
+divided by $\sum_t |G_{ij}(f,t)|$ and zeroed outside the known chirp band; a time ramp (time
+since emission, which carries range) and a frequency ramp. The per-frequency normalisation is a
+time--frequency analogue of PHAT: every in-band frequency gets equal total weight while frames
+keep their relative energy, so the network can still tell early from late arrivals. The chirp
+band is a system setting known to the receiver; the classical baseline uses the same mask.
+
+\textbf{Architecture} (\TrainFullParams{} parameters). A steering layer maps the 12 phase
+channels, per frequency, to 504 beam directions (72 azimuths $\times$ 7 elevations,
+0--60$^\circ$) and sums over frequency, producing a beam--time map of $7\times72\times65$. Its
+weights are initialised to the SRP-PHAT steering vectors of the array and remain trainable.
+Three residual convolution blocks with circular padding in azimuth process the beam maps
+(spatial branch, 32 channels at full resolution). Four residual convolution blocks with
+frequency pooling process log-power and the ramps (spectral branch). Per frame, the spatial
+branch's azimuth-max and azimuth-mean summaries and the spectral features are projected to 256
+dimensions and passed through a two-layer bidirectional GRU (192 units per direction). Two
+attention heads over the 65 frames then pool (a) the spatial feature maps, modulated by the GRU
+context (FiLM), into 72 azimuth logits through two circular 1-D convolutions, and (b) the GRU
+states into a range mean and log-variance. The frame attention lets the network favour the
+direct-path frames over later echoes, in the spirit of the precedence effect
+\cite{litovsky1999precedence}, which a full-window SRP-PHAT cannot do.
+
+\textbf{Loss and training.} Cross-entropy against a Gaussian-smoothed (5$^\circ$) azimuth target,
+plus smooth-L1 and Gaussian negative log-likelihood on range. AdamW, one-cycle learning rate
+(peak $10^{-3}$), batch \BatchSize, \TrainFullEpochs{} epochs, fp16 mixed precision on an
+\GPU{}, model selection on the validation set. Each batch applies one of the 8 exact symmetries
+of the square array (a microphone permutation with the matching azimuth rotation or
+reflection), checked against SRP-PHAT, which gives identical errors under all 8 transforms.
+
+\textbf{Design history.} Two earlier designs that fed per-bin unit phasors to a 2-D CNN with a
+recurrent head plateaued at \AbortOneValMAE$^\circ$ and \AbortTwoValMAE$^\circ$ validation MAE
+(chance: 90$^\circ$) and were stopped after \AbortOneEpochs{} and \AbortTwoEpochs{} epochs. With
+spatial aliasing the phase-to-direction map differs per frequency, which a convolution shared
+across frequency cannot represent. A diagnostic (\texttt{scripts/debug\_steer.py}) showed that a
+fixed steered response over the STFT matches the classical baseline only with equal per-frequency
+weighting \emph{and} out-of-band masking, which led to the current input and steering layer. The
+current design without symmetry augmentation overfit (train \NoAugTrainMAE$^\circ$ vs.\
+validation \NoAugValMAE$^\circ$ MAE after \NoAugEpochs{} epochs, stopped). All histories are in
+\texttt{results/} and in Fig.~\ref{fig:history}.
+
+\textbf{Ablations.} \emph{Magnitude only}: the phase channels and the spatial branch are
+removed; azimuth logits come from the GRU summary. \emph{No multipath in training}: the same
+model trained on an anechoic copy of the training set (direct path only), tested on the normal
+test set.
+
+\subsection{Controllers}
+
+All controllers output wheel duties $(u_L,u_R)$, which is what the firmware receives.
+
+\textbf{Tracker and pursuit} (\emph{GCC-PHAT + tracker}, \emph{DL + tracker}). A constant-velocity
+Kalman filter \cite{kalman1960} tracks the person in the robot's dead-reckoning frame (wheel
+odometry and gyro). Measurement noise comes from the localizer: the DL net's predicted azimuth
+spread and range variance, or for the classical baseline a heuristic from the SRP peak height.
+Gating rejects outliers and the track re-initialises after 10 consecutive rejections. A pursuit
+law sets the yaw-rate command proportional to bearing and the speed command proportional to
+range error beyond the 0.8\,m standoff, plus the tracked person's radial speed as feedforward;
+a nominal mixer converts $(v,\omega)$ into duties.
+
+\textbf{DL + PID.} The same tracked estimate drives an outer PID on bearing and range that sets
+$(v^*,\omega^*)$, and an inner PI on measured speed and yaw rate (wheel odometry, gyro) that
+corrects the nominal mixer's duties.
+
+\textbf{DL + PID + residual.} What the residual learns is a supervised inverse-dynamics map
+$u_t = f(h_t, v_{\mathrm{target}}, \omega_{\mathrm{target}})$, where $h_t$ is the last 0.5\,s of
+applied duties and noisy proprioception (speed, yaw rate, pitch, pitch rate, roll), and the
+targets are the speed and yaw rate measured 0.2\,s after $u_t$ is applied. It is trained on
+random piecewise-constant commands on all six terrains, sampled only at command switches (an MLP,
+72$\to$128$\to$128$\to$2, \ResEpochs{} epochs; validation duty MAE \ResValMAE{} against
+\ResMixerMAE{} for the flat-ground mixer). At run time it is queried at the \emph{measured} motion,
+and the residual added to the PID's feedforward $\mathrm{mix}(v^*,\omega^*)$ is
+$f(h,v,\omega)-\mathrm{mix}(v,\omega)$, clipped to $\pm0.5$: the extra duty needed to hold the
+current motion on the terrain implied by recent history (more uphill or on grass, less downhill).
+It sees neither the terrain label nor any acoustic input.
+
+Our first residual got two things wrong, and both are instructive. Sampling every step of
+each held command let the network copy the previous duty, which is part of its input (validation
+MSE \ResOldValMSE, an illusion; \texttt{results/superseded\_residual\_v1.json}). Querying it at the PID setpoint turned it into a second
+high-gain speed loop. Together they saturated the wheels and tumbled the cart even with oracle
+localization (\texttt{scripts/debug\_pid.py}); the version described above fixes both.
+
+\textbf{RL (PPO).} Observation: four stacked frames of 24 values, namely 17 classical acoustic
+features (six GCC-PHAT lags and peak heights, SRP-PHAT azimuth as cosine and sine, SRP peak,
+matched-filter range, level), 5 proprioceptive values and the previous action. The policy is not
+given the deep localizer; this keeps the RL observation cheap enough for millions of steps, and
+it is a confound in the comparison (Sec.~\ref{sec:discussion}). Action: duties. Reward per step:
+$+5\,(d_{t-1}-d_t)$ while beyond the standoff, $-0.05\max(d-0.8,0)$, $+0.1$ within the
+\FollowRadius\,m follow radius, $-0.02\,\dot\psi^2$, $-0.05\,\lVert u_t-u_{t-1}\rVert^2$, $-0.5$
+closer than 0.4\,m, $-1$ per collision, $-0.05$ per step while stuck, and $-10$ with termination
+on a tumble (the cart looping inside the shell) or if the person is more than 12\,m away. The
+true distance $d$ is privileged and used only in the reward. PPO with 32 parallel environments
+(terrain sampled at every reset, 30\,s episodes), 256-step rollouts, batch 1024, 8 epochs, learning
+rate $3\cdot10^{-4}$, two 256-unit hidden layers.
+
+\section{Experimental setup}
+
+\textbf{Data.} \NTrainSet{} training, \NValSet{} validation and \NTestSet{} test recordings (plus
+an anechoic copy of the training set, \NAnechoicSet), each with a uniformly random terrain,
+azimuth, horizontal range (0.5--7\,m), phone height (0.75--1.45\,m), head tilt, temperature,
+SNR, sync error and channel (A\_us 50\%, B\_us 15\%, B\_fb 35\%). Splits use disjoint seeds.
+
+\textbf{Localization metrics.} Absolute azimuth error (MAE, RMSE, median, 90th percentile,
+fraction below 10$^\circ$) and horizontal range error, on the full test set, for every method on
+the same recordings.
+
+\textbf{Closed-loop protocol.} For each terrain, $N$ seeded 60\,s episodes (identical for all
+controllers) start with the person 2--4\,m away in a random direction; the person walks at
+0.25--0.85\,m/s with random turns and pauses (15\% of segments), around walls and obstacles. An episode is a
+\emph{success} if, after a \WarmupS\,s warm-up, the robot stays within \FollowRadius\,m of the
+person for at least \SuccessFrac\% of the time and never tumbles. We also report mean distance
+after warm-up, final distance, time to first reach the radius, path length, control effort
+(mean $u^2$), collisions, tumbles, and time closer than 0.4\,m. Intervals are 95\% normal
+intervals over episodes.
+
+\textbf{Compute.} All training and evaluation ran on one \GPU{} (8\,GB) with PyTorch
+\TorchVersion{} (CUDA 12.8); the PPO policy network ran on the CPU while the environments
+rendered audio on the GPU.
+
+\input{sections/results.tex}

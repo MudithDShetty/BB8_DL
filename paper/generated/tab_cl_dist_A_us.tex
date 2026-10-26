@@ -1,0 +1,12 @@
+\begin{tabular}{lrrrrrrr}
+\toprule
+method & flat & slope & rough & grass & indoor & obstacles & all\\
+\midrule
+Oracle + pursuit & 0.85 & 1.34 & 0.94 & 1.51 & 0.80 & 0.86 & 1.05 \\
+GCC-PHAT + tracker & 1.29 & 3.95 & 1.34 & 2.27 & 0.88 & 1.09 & 1.80 \\
+DL + tracker & 1.20 & 2.01 & 0.95 & 1.84 & 0.82 & 0.97 & 1.30 \\
+DL + PID & 0.84 & 4.58 & 0.86 & 1.51 & 0.81 & 0.84 & 1.57 \\
+DL + PID + residual & 0.82 & 4.26 & 0.85 & 1.54 & 0.80 & 0.82 & 1.52 \\
+RL (PPO) & 1.39 & 2.15 & 1.22 & 1.92 & 0.80 & 1.01 & 1.41 \\
+\bottomrule
+\end{tabular}

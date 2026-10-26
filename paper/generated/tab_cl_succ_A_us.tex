@@ -1,0 +1,12 @@
+\begin{tabular}{lrrrrrrr}
+\toprule
+method & flat & slope & rough & grass & indoor & obstacles & all\\
+\midrule
+Oracle + pursuit & 100 & 50 & 100 & 30 & 100 & 100 & 80 \\
+GCC-PHAT + tracker & 97 & 17 & 93 & 17 & 100 & 97 & 70 \\
+DL + tracker & 97 & 37 & 100 & 20 & 100 & 93 & 74 \\
+DL + PID & 80 & 13 & 87 & 47 & 23 & 87 & 56 \\
+DL + PID + residual & 100 & 17 & 93 & 47 & 97 & 100 & 76 \\
+RL (PPO) & 93 & 93 & 97 & 63 & 100 & 97 & 91 \\
+\bottomrule
+\end{tabular}
