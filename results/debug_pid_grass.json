@@ -1,0 +1,34 @@
+{
+ "terrain": "grass",
+ "n": 8,
+ "seconds": 30.0,
+ "seed": 7300,
+ "pitch_limit_rad": 1.4,
+ "note": "first n evaluation scenarios of this terrain, oracle localization, channel A_us",
+ "methods": {
+  "oracle_pursuit": {
+   "success": 0.25,
+   "mean_dist": 1.6552972667076145,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.679096869383932,
+   "frac_saturated": 0.1325,
+   "max_abs_pitch_rad": 0.9183195156174166
+  },
+  "oracle_pid": {
+   "success": 0.625,
+   "mean_dist": 1.2238724256660205,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.7434818578883073,
+   "frac_saturated": 0.42791666666666667,
+   "max_abs_pitch_rad": 1.020186495620579
+  },
+  "oracle_pid_res": {
+   "success": 0.625,
+   "mean_dist": 1.2295666036412025,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.7779452561837584,
+   "frac_saturated": 0.5736458333333333,
+   "max_abs_pitch_rad": 1.020186495620579
+  }
+ }
+}

@@ -1,0 +1,34 @@
+{
+ "terrain": "flat",
+ "n": 8,
+ "seconds": 30.0,
+ "seed": 7000,
+ "pitch_limit_rad": 1.4,
+ "note": "first n evaluation scenarios of this terrain, oracle localization, channel A_us",
+ "methods": {
+  "oracle_pursuit": {
+   "success": 1.0,
+   "mean_dist": 0.8448266684081449,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.42298754555393675,
+   "frac_saturated": 0.0109375,
+   "max_abs_pitch_rad": 0.8847567017010057
+  },
+  "oracle_pid": {
+   "success": 1.0,
+   "mean_dist": 0.850666755401654,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.5049383093034314,
+   "frac_saturated": 0.12229166666666667,
+   "max_abs_pitch_rad": 1.238142316313038
+  },
+  "oracle_pid_res": {
+   "success": 1.0,
+   "mean_dist": 0.8343343967230351,
+   "tumble_steps": 0.0,
+   "abs_u_mean": 0.5757339426486472,
+   "frac_saturated": 0.24489583333333334,
+   "max_abs_pitch_rad": 1.0611888101934703
+  }
+ }
+}

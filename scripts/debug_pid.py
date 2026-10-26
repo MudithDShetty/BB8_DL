@@ -4,6 +4,7 @@
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -26,6 +27,8 @@ T = int(args.seconds / C.CTRL_DT)
 seed = C.SEEDS["eval"] + 100 * C.TERRAINS.index(args.terrain)
 scen = make_scenarios(args.terrain, args.n, seed, "A_us", T)
 ren = Renderer("cpu")
+out = dict(terrain=args.terrain, n=args.n, seconds=args.seconds, seed=seed, pitch_limit_rad=C.ROBOT.phi_limit,
+           note="first n evaluation scenarios of this terrain, oracle localization, channel A_us", methods={})
 for name, ctrl in [("oracle_pursuit", TrackPursuit(OracleLoc(), "o")),
                    ("oracle_pid", PIDFollower(OracleLoc())),
                    ("oracle_pid_res", PIDFollower(OracleLoc(), Residual(C.CHECKPOINTS / "residual.pt")))]:
@@ -35,3 +38,8 @@ for name, ctrl in [("oracle_pursuit", TrackPursuit(OracleLoc(), "o")),
     print(f"{name:15s} success {a['success']['mean']:.2f}  dist {a['mean_dist']['mean']:.2f}  tumble steps {a['tumbles']['mean']:.1f}  "
           f"|u| mean {np.abs(u).mean():.2f}  frac |u|>0.95 {np.mean(np.abs(u) > 0.95):.2f}  "
           f"max |pitch| {np.abs(L['pitch']).max():.2f} rad  first tumble step {np.argmax(L['tumble'].any(0)) if L['tumble'].any() else -1}")
+    out["methods"][name] = dict(success=a["success"]["mean"], mean_dist=a["mean_dist"]["mean"],
+                                tumble_steps=a["tumbles"]["mean"], abs_u_mean=float(np.abs(u).mean()),
+                                frac_saturated=float(np.mean(np.abs(u) > 0.95)),
+                                max_abs_pitch_rad=float(np.abs(L["pitch"]).max()))
+(C.RESULTS / f"debug_pid_{args.terrain}.json").write_text(json.dumps(out, indent=1))

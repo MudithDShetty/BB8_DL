@@ -81,6 +81,20 @@ def localization_tables():
             rows.append(f"{LOC_NAMES[m]} & " + " & ".join(f"{f(g[n]['bearing_mae_deg'])} / {f(g[n]['bearing_median_deg'])}" for n in names) + " \\\\")
         write(fn, f"\\begin{{tabular}}{{l{'r' * len(names)}}}\n\\toprule\nmethod & {hdr}\\\\\n\\midrule\n"
               + "\n".join(rows) + "\n\\bottomrule\n\\end{tabular}\n")
+        for m in methods:
+            for n in names:
+                g = loc["methods"][m][key][n]
+                mac(f"Loc{m.replace('_', '')}{n.replace('_', '')}BMAE", f(g["bearing_mae_deg"]))
+                mac(f"Loc{m.replace('_', '')}{n.replace('_', '')}BMed", f(g["bearing_median_deg"]))
+    for m in methods:
+        for i, (b, g) in enumerate(loc["methods"][m]["by_snr"].items()):
+            L = chr(65 + i)
+            mac(f"Loc{m.replace('_', '')}Snr{L}BMAE", f(g["bearing_mae_deg"]))
+            mac(f"Loc{m.replace('_', '')}Snr{L}BMed", f(g["bearing_median_deg"]))
+            mac(f"Loc{m.replace('_', '')}Snr{L}RMAE", f(g["range_mae_m"], 2))
+            if m == methods[0]:
+                mac(f"Snr{L}N", f"{g['n']:,}".replace(",", "{,}"))
+                mac(f"Snr{L}Bin", b.replace("-99..", "$<$").replace("..99", "+").replace("..", "--"))
     lat = loc.get("latency", {})
     for k, v in lat.items():
         mac("Lat" + "".join(w.capitalize() for w in k.split("_") if w.isalpha()), f(v, 2))
@@ -165,6 +179,7 @@ def closed_loop_tables():
                 for t in terrs:
                     a = res[m][t]["agg"][metric]
                     cells.append("--" if a["mean"] is None else f"{a['mean'] * scale:.{nd}f}")
+                    mac(f"CL{chm}{m.replace('_', '')}{fn}{t}", cells[-1])
                     allv += [x for x in res[m][t]["per_episode"][metric] if x is not None]
                 overall = float(np.mean(allv)) * scale if allv else None
                 rows.append(f"{CL_NAMES[m]} & " + " & ".join(cells) + f" & {f(overall, nd)} \\\\")
@@ -179,6 +194,14 @@ def closed_loop_tables():
                 v = [x for t in terrs for x in res[m][t]["per_episode"][k] if x is not None]
                 return float(np.mean(v)) if v else None
             ttr = pooled("time_to_reach")
+            mk = f"CL{chm}{m.replace('_', '')}"
+            mac(mk + "tumbles", f(pooled("tumbles"), 2))
+            mac(mk + "within", f(pooled("frac_within") * 100, 0))
+            mac(mk + "final", f(pooled("final_dist"), 2))
+            mac(mk + "close", f(pooled("too_close") * 100, 1))
+            for t in terrs:
+                mac(mk + "tumbles" + t, f(res[m][t]["agg"]["tumbles"]["mean"], 2))
+                mac(mk + "effort" + t, f(res[m][t]["agg"]["effort"]["mean"], 3))
             rows.append(f"{CL_NAMES[m]} & {f(pooled('frac_within') * 100, 0)} & {f(pooled('final_dist'), 2)} & "
                         f"{f(ttr, 1)} & {f(pooled('path_length'), 1)} & {f(pooled('person_path'), 1)} & "
                         f"{f(pooled('collisions'), 1)} & {f(pooled('tumbles'), 2)} & {f(pooled('too_close') * 100, 1)} \\\\")
@@ -204,8 +227,24 @@ def sanity_macros():
     mac("SanityRangeMed", f(a["range_median"] * 100, 0))
 
 
+def debug_pid_macros():
+    for t in C.TERRAINS:
+        d = load(f"debug_pid_{t}.json")
+        if not d:
+            continue
+        mac("DbgN", d["n"])
+        mac("DbgSeconds", f(d["seconds"], 0))
+        mac("PitchLimit", f(d["pitch_limit_rad"], 2))
+        for m, v in d["methods"].items():
+            k = "Dbg" + "".join(w.capitalize() for w in m.split("_")) + t
+            mac(k + "Pitch", f(v["max_abs_pitch_rad"], 2))
+            mac(k + "Sat", f(v["frac_saturated"] * 100, 0))
+            mac(k + "Succ", f(v["success"] * 100, 0))
+
+
 def main():
     sanity_macros()
+    debug_pid_macros()
     dataset_macros()
     training_macros()
     localization_tables()
